@@ -1,0 +1,52 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Sync with Emerald Configuration Services
+
+on:
+  push:
+    branches:
+    - 'qa_**'
+jobs:
+  publish_changes:
+    runs-on: ubuntu-latest
+    environment: staging
+    name: Publish Configuration Changes.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # OR "2" -> To retrieve the preceding commit.
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v39.2.0
+        with:
+          json: "true"
+          files_ignore: |
+            .github/**
+            .gitignore
+            README.md
+
+      - name: "Auth GCP"
+        id: "auth"
+        uses: "google-github-actions/auth@v1"
+        with:
+          credentials_json: ${{ secrets.GCP_KEY }}
+ 
+      - name: "Set GKE credentials"
+        uses: "google-github-actions/get-gke-credentials@v1"
+        with:
+          cluster_name: "emerald-k8s-cluster-qa1"
+          location: "us-central1-f"
+
+      - name: Port forwarding
+        if: always()
+        run: |
+          kubectl port-forward service/selling-configuration -n selling-services-nightly 40001:40001 &
+
+      - uses: ncr-swt-retail/emerald-configuration-sync@v1.0.15
+        with:
+          routing: ${{ vars.ROUTING }}
+          emerald_authorization: ${{ secrets.EMERALD_AUTHORIZATION }}
+          added_files: ${{ steps.changed-files.outputs.added_files }}
+          deleted_files: ${{ steps.changed-files.outputs.deleted_files }}
+          modified_files: ${{ steps.changed-files.outputs.modified_files }}
